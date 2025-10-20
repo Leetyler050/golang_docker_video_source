@@ -1,0 +1,20 @@
+FROM golang:1.25-alpine
+
+WORKDIR /app
+
+#COPY go.* ./
+
+COPY go.mod /app/
+COPY main.go /app/
+#COPY /videos /app/videos/
+
+RUN go mod download
+
+RUN go build -o main main.go
+
+EXPOSE 8080
+
+CMD ["./main"]
+
+#remember to try caffeinate ./main
+
