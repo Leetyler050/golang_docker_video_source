@@ -1,6 +1,7 @@
 package main
 
 import (
+	"fmt"
 	"html/template"
 	"log"
 	"net"
@@ -73,14 +74,15 @@ func main() {
 	mux.Handle("/videos/", http.StripPrefix("/videos/", fs))
 	//mux.Handle("/files/", http.StripPrefix("/files/", fs))
 
-	log.Println("Server started on :8080")
-	log.Fatal(http.ListenAndServe(":8080", mux))
-
 	ips, err := GetLocalIPs()
 	if err != nil {
 		log.Fatal(err)
 	}
-	log.Println(ips)
+	fmt.Println(ips)
+
+	log.Println("Server started on :8080")
+	log.Fatal(http.ListenAndServe(":8080", mux))
+
 }
 
 func listFilesHandler(w http.ResponseWriter, r *http.Request) {

@@ -33,3 +33,4 @@ go.work.sum
 
 #custom files
 *.DS_Store
+*lessons/
