@@ -8,12 +8,15 @@ import (
 	"net/http"
 	"os"
 	"path/filepath"
+	"strings"
 )
 
 // FileInfo holds information about a file for templating.
 type FileInfo struct {
-	Name string
-	Path string
+	Name    string
+	Path    string
+	IsDir   bool
+	ModTime string
 }
 
 // Data for the HTML template.
@@ -29,36 +32,52 @@ const listTemplate = `
 <!DOCTYPE html>
 <html>
 <head>
-    <title>File Listing</title>
+    <title>File and Folder Listing</title>
     <style>
         body { font-family: sans-serif; }
-        ul { list-style-type: none; padding: 0; }
-        li { margin: 10px 0; }
+        table { border-collapse: collapse; width: 100%; margin-top: 20px; }
+        th, td { border: 1px solid #ddd; padding: 12px; text-align: left; }
+        th { background-color: #f2f2f2; }
         a { text-decoration: none; color: #007bff; }
         a:hover { text-decoration: underline; }
+        .folder { color: #ffa500; font-weight: bold; }
+        .file { color: #007bff; }
     </style>
 </head>
 <body>
-    <h1>Files in Directory</h1>
-    <ul>
+    <h1>Files and Folders</h1>
+    <table>
+        <tr>
+            <th>Name</th>
+            <th>Last Modified</th>
+        </tr>
         {{range .Files}}
-            <li><a href="{{.Path}}">{{.Name}}</a></li>
+            <tr>
+                <td>
+                    {{if .IsDir}}
+                        <a class="folder" href="{{.Path}}">📁 {{.Name}}/</a>
+                    {{else}}
+                        <a class="file" href="{{.Path}}">📄 {{.Name}}</a>
+                    {{end}}
+                </td>
+                <td>{{.ModTime}}</td>
+            </tr>
         {{end}}
-    </ul>
+    </table>
 </body>
 </html>
 `
 
 func main() {
 	// Create the directory to serve, for demonstration purposes.
-	err := os.MkdirAll(dirToServe, 0755)
-	if err != nil {
-		log.Fatal("Could not create directory:", err)
-	}
+	// err := os.MkdirAll(dirToServe, 0755)
+	// if err != nil {
+	// 	log.Fatal("Could not create directory:", err)
+	// }
 
 	// Create some dummy files to be listed.
-	os.WriteFile(filepath.Join(dirToServe, "file1.txt"), []byte("Hello, file 1!"), 0644)
-	os.WriteFile(filepath.Join(dirToServe, "test.md"), []byte("# Markdown Test"), 0644)
+	// os.WriteFile(filepath.Join(dirToServe, "file1.txt"), []byte("Hello, file 1!"), 0644)
+	// os.WriteFile(filepath.Join(dirToServe, "test.md"), []byte("# Markdown Test"), 0644)
 
 	// Create a new ServeMux for routing.
 	mux := http.NewServeMux()
@@ -95,28 +114,41 @@ func listFilesHandler(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	// Only handle requests to the root path.
-	if r.URL.Path != "/" {
-		http.NotFound(w, r)
+	// Get the requested path and construct the full directory path
+	requestedPath := strings.TrimPrefix(r.URL.Path, "/")
+	fullPath := filepath.Join(dirToServe, requestedPath)
+
+	// Security check: ensure the path doesn't escape dirToServe
+	absPath, err := filepath.Abs(fullPath)
+	if err != nil {
+		http.Error(w, "Invalid path", http.StatusBadRequest)
+		return
+	}
+	absDirToServe, _ := filepath.Abs(dirToServe)
+	if !strings.HasPrefix(absPath, absDirToServe) {
+		http.Error(w, "Forbidden", http.StatusForbidden)
 		return
 	}
 
-	// Read all directory entries from the specified directory.
-	entries, err := os.ReadDir(dirToServe)
+	// Read all directory entries from the requested directory
+	entries, err := os.ReadDir(fullPath)
 	if err != nil {
 		http.Error(w, "Failed to read directory", http.StatusInternalServerError)
 		return
 	}
 
 	var files []FileInfo
-	// Populate the FileInfo struct for each file.
+	// Include both files and folders
 	for _, entry := range entries {
-		// Skip directories and hidden files.
-		if !entry.IsDir() && entry.Name()[0] != '.' {
+		// Skip hidden files/folders and macOS metadata files
+		if entry.Name()[0] != '.' && !strings.HasPrefix(entry.Name(), "._") {
+			info, _ := entry.Info()
+			relativePath := filepath.Join(requestedPath, entry.Name())
 			files = append(files, FileInfo{
-				Name: entry.Name(),
-				Path: "/videos/" + entry.Name(),
-				//Path: "/files/" + entry.Name(),
+				Name:    entry.Name(),
+				Path:    "/videos/" + relativePath,
+				IsDir:   entry.IsDir(),
+				ModTime: info.ModTime().Format("2006-01-02 15:04:05"),
 			})
 		}
 	}
